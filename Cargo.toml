@@ -2,6 +2,7 @@
 name = "crabbyq"
 version = "0.1.0"
 edition = "2024"
+description = "Framework for routing events inspired by Faststream and axum."
 authors = ["GrumpyChubbyCat lamantin-ai@yandex.ru"]
 
 [dependencies]
