@@ -4,12 +4,14 @@ use std::collections::HashMap;
 
 pub type HeaderMap = HashMap<String, String>;
 
+// internal message structure
 pub struct BrokerMessage {
-    pub subject: String,
-    pub payload: Vec<u8>,
-    pub headers: Option<HeaderMap>,
+    pub subject: String, // also known as a stream topic or router_key 
+    pub payload: Vec<u8>, // message bytes
+    pub headers: Option<HeaderMap>, // supported by NATS, Kafka and etc
 }
 
+// Common trait for all brokers
 #[async_trait]
 pub trait Broker: Send + Sync + 'static {
     type MessageStream: Stream<Item = BrokerMessage> + Send + Unpin;

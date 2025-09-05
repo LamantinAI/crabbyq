@@ -9,6 +9,12 @@ pub struct NatsBroker {
     client: async_nats::Client,
 }
 
+impl NatsBroker {
+    pub fn new(client: async_nats::Client) -> Self {
+        Self { client: client }
+    }
+}
+
 #[async_trait]
 impl Broker for NatsBroker {
     type MessageStream = Pin<Box<dyn Stream<Item = BrokerMessage> + Send + Unpin>>;

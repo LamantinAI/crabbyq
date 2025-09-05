@@ -6,9 +6,21 @@ description = "Framework for routing events inspired by Faststream and axum."
 authors = ["GrumpyChubbyCat lamantin-ai@yandex.ru"]
 
 [dependencies]
+anyhow = "1.0.99"
 async-nats = "0.42.0"
 async-trait = "0.1.89"
+bytes = "1.10.1"
 futures-util = "0.3.31"
+tokio = { version = "1.47.1", features = ["signal", "rt-multi-thread"] }
+tower = "0.5.2"
+tracing = "0.1.41"
+
+[dev-dependencies]
+tracing-subscriber = "0.3.20"
 
 [lib]
 crate-type = ["rlib"]
+
+[[example]]
+name = "basic"
+path = "src/examples/basic.rs"
