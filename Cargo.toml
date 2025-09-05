@@ -1,0 +1,13 @@
+[package]
+name = "crabbyq"
+version = "0.1.0"
+edition = "2024"
+authors = ["GrumpyChubbyCat lamantin-ai@yandex.ru"]
+
+[dependencies]
+async-nats = "0.42.0"
+async-trait = "0.1.89"
+futures-util = "0.3.31"
+
+[lib]
+crate-type = ["rlib"]
