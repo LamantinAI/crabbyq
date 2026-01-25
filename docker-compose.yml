@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  nats:
+  crabbyq-nats:
     image: nats:latest
     container_name: crabbyq-nats
     ports:
