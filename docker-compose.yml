@@ -14,5 +14,35 @@ services:
       - nats-data:/tmp/nats
     restart: unless-stopped
 
+  crabbyq-redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.1.4
+    container_name: crabbyq-redpanda
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - "1G"
+      - --reserve-memory
+      - "0M"
+      - --check=false
+      - --node-id
+      - "0"
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://localhost:9092
+      - --set
+      - redpanda.auto_create_topics_enabled=true
+    ports:
+      - "9092:9092" # Kafka API
+      - "9644:9644" # Admin API
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    restart: unless-stopped
+
 volumes:
   nats-data:
+  redpanda-data:

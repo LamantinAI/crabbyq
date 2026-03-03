@@ -11,6 +11,7 @@ async-nats = "0.46.0"
 async-trait = "0.1.89"
 bytes = "1.10.1"
 futures-util = "0.3.31"
+rdkafka = { version = "0.38.0", features = ["tokio", "cmake-build"] }
 tokio = { version = "1.49.0", features = ["signal", "rt-multi-thread"] }
 tower = "0.5.3"
 tracing = "0.1.44"
@@ -22,5 +23,9 @@ tracing-subscriber = "0.3.22"
 crate-type = ["rlib"]
 
 [[example]]
-name = "basic"
-path = "src/examples/basic.rs"
+name = "nats_rpc"
+path = "src/examples/nats_rpc.rs"
+
+[[example]]
+name = "kafka_rpc"
+path = "src/examples/kafka_rpc.rs"
