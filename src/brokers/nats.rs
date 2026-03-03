@@ -17,7 +17,7 @@ impl NatsBroker {
 
 #[async_trait]
 impl Broker for NatsBroker {
-    type MessageStream = Pin<Box<dyn Stream<Item = BrokerMessage> + Send + Unpin>>;
+    type MessageStream = Pin<Box<dyn Stream<Item = BrokerMessage> + Send>>;
 
     async fn subscribe(
         &self,

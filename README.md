@@ -61,6 +61,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 ```
 
+## Run Locally
+
+Start brokers:
+
+```bash
+docker compose up -d crabbyq-nats crabbyq-redpanda
+```
+
+Run NATS example:
+
+```bash
+cargo run --example nats_rpc
+```
+
+Run Kafka/Redpanda example:
+
+```bash
+cargo run --example kafka_rpc
+```
+
 ## Architecture
 
 CrabbyQ uses a specialized Builder pattern. The `Router` transitions through different states at compile-time (e.g., from `StateNotSet` to `StateSet`). This prevents common runtime errors where a handler attempts to access a state that hasn't been provided.
