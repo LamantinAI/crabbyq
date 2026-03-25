@@ -1,21 +1,34 @@
-use crabbyq::prelude::*;
 use crabbyq::brokers::NatsBroker;
+use crabbyq::prelude::*;
 use tracing::info;
 
-// Event handler
+#[derive(Clone)]
+struct AppState {
+    app_name: &'static str,
+}
+
+impl AppState {
+    fn new() -> Self {
+        Self { app_name: "crabbyq" }
+    }
+}
+
 async fn handle_async_event(
-    event: Event, 
-    _state: ()
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    info!("🦀 Async handler got event: {}", event.subject);
-    // Imitating some async work
+    event: Event,
+    state: AppState,
+) -> CrabbyResult<()> {
+    info!(
+        "🦀 Stateful handler in '{}' got event: {}",
+        state.app_name,
+        event.subject()
+    );
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-    info!("Async work done for: {}", event.subject);
+    info!("Stateful work done for: {}", event.subject());
     Ok(())
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn main() -> CrabbyResult<()> {
     // Initializing logging
     tracing_subscriber::fmt::init();
 
@@ -24,10 +37,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let nats_client = async_nats::connect("nats://localhost:4222").await?;
     let nats_broker = NatsBroker::new(nats_client);
 
+    // Creating shared application state
+    let app_state = AppState::new();
+
     // Creating our app
     let app = Router::new()
-        .set_state(()) // Setting state
-        .route("test.simple", handle_async_event) // add our handler
+        .set_state(app_state)
+        .route("test.simple", handle_async_event)
         .into_service(nats_broker);
 
     info!("🦀 CrabbyQ starting...");

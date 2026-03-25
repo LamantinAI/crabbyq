@@ -9,6 +9,7 @@ pub struct BrokerMessage {
     pub subject: String, // also known as a stream topic or router_key 
     pub payload: Vec<u8>, // message bytes
     pub headers: Option<HeaderMap>, // supported by NATS, Kafka and etc
+    pub reply_to: Option<String>,
 }
 
 // Common trait for all brokers
@@ -24,6 +25,7 @@ pub trait Broker: Send + Sync + 'static {
     async fn publish(
         &self, 
         subject: &str, 
-        payload: &[u8]
+        payload: &[u8],
+        headers: Option<&HeaderMap>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }

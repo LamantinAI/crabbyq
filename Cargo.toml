@@ -10,9 +10,12 @@ anyhow = "1.0.99"
 async-nats = "0.46.0"
 async-trait = "0.1.89"
 bytes = "1.10.1"
+ciborium = "0.2.2"
 futures-util = "0.3.31"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
 tokio = { version = "1.49.0", features = ["signal", "rt-multi-thread"] }
-tower = "0.5.3"
+tower = { version = "0.5.3", features = ["util"] }
 tracing = "0.1.44"
 
 [dev-dependencies]
@@ -20,7 +23,3 @@ tracing-subscriber = "0.3.22"
 
 [lib]
 crate-type = ["rlib"]
-
-[[example]]
-name = "basic"
-path = "src/examples/basic.rs"
