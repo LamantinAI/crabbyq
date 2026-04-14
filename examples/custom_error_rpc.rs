@@ -2,15 +2,16 @@ use crabbyq::brokers::NatsBroker;
 use crabbyq::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+use std::time::Duration;
 use tracing::info;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct DivideRequest {
     left: i32,
     right: i32,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 struct DivideResponse {
     result: i32,
 }
@@ -18,6 +19,11 @@ struct DivideResponse {
 #[derive(Serialize)]
 struct ErrorBody {
     error: &'static str,
+}
+
+#[derive(Deserialize)]
+struct ErrorReply {
+    error: String,
 }
 
 enum DivideError {
@@ -61,21 +67,39 @@ async fn main() -> CrabbyResult<()> {
     tracing_subscriber::fmt::init();
 
     // Connecting to NATS
-    info!("🦀 Connecting to NATS...");
+    info!("Connecting to NATS...");
     let nats_client = async_nats::connect("nats://localhost:4222").await?;
     let nats_broker = NatsBroker::new(nats_client);
+    let publisher = Publisher::new(nats_broker.clone());
 
     // Creating our app with a custom error response
     let app = Router::new()
         .route("rpc.divide", handle_divide)
-        .into_service(nats_broker);
+        .into_service(nats_broker)
+        .with_graceful_shutdown(async {
+            tokio::time::sleep(Duration::from_millis(700)).await;
+        });
 
-    info!("🦀 CrabbyQ starting...");
-    info!("🦀 Press Ctrl+C to stop");
+    info!("Starting RPC service...");
+    let handle = tokio::spawn(app.serve());
 
-    // Running the application
-    app.serve().await?;
+    // Give the subscription a moment to start before sending the requests.
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
-    info!("🦀 CrabbyQ stopped");
+    let success = publisher
+        .request("rpc.divide", Json(DivideRequest { left: 10, right: 2 }))
+        .await?;
+    let success: DivideResponse = success.into_json()?;
+    info!("Successful division result: {}", success.result);
+
+    let failure = publisher
+        .request("rpc.divide", Json(DivideRequest { left: 10, right: 0 }))
+        .await?;
+    let failure: ErrorReply = failure.into_json()?;
+    info!("Error reply: {}", failure.error);
+
+    handle.await??;
+
+    info!("CrabbyQ stopped");
     Ok(())
 }

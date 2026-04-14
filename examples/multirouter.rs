@@ -3,12 +3,12 @@ use crabbyq::prelude::*;
 use tracing::info;
 
 async fn handle_user_created(event: Event) -> CrabbyResult<()> {
-    info!("🦀 User router got event: {}", event.subject());
+    info!("User router got event: {}", event.subject());
     Ok(())
 }
 
 async fn handle_billing_event(event: Event) -> CrabbyResult<()> {
-    info!("🦀 Billing router got event: {}", event.subject());
+    info!("Billing router got event: {}", event.subject());
     Ok(())
 }
 
@@ -28,7 +28,7 @@ async fn main() -> CrabbyResult<()> {
     tracing_subscriber::fmt::init();
 
     // Connecting to NATS
-    info!("🦀 Connecting to NATS...");
+    info!("Connecting to NATS...");
     let nats_client = async_nats::connect("nats://localhost:4222").await?;
     let nats_broker = NatsBroker::new(nats_client);
 
@@ -42,12 +42,12 @@ async fn main() -> CrabbyResult<()> {
         .include(billing)
         .into_service(nats_broker);
 
-    info!("🦀 CrabbyQ starting...");
-    info!("🦀 Press Ctrl+C to stop");
+    info!("CrabbyQ starting...");
+    info!("Press Ctrl+C to stop");
 
     // Running the application
     app.serve().await?;
 
-    info!("🦀 CrabbyQ stopped");
+    info!("CrabbyQ stopped");
     Ok(())
 }

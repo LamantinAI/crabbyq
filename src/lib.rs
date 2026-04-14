@@ -12,7 +12,7 @@ pub mod service;
 pub use extract::{Body, Cbor, FromRef, Headers, Json, Publish, State, Subject};
 pub use brokers::base::HeaderMap;
 pub use errors::{CrabbyError, CrabbyResult};
-pub use publish::Publisher;
+pub use publish::{Publisher, Reply};
 pub use router::Router;
 pub use response::{HandlerResponse, IntoResponse};
 pub use event::Event;
@@ -33,6 +33,7 @@ pub mod prelude {
         Json,
         Publish,
         Publisher,
+        Reply,
         State,
         Subject,
     };

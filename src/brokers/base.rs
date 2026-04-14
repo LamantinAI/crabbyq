@@ -28,4 +28,11 @@ pub trait Broker: Send + Sync + 'static {
         payload: &[u8],
         headers: Option<&HeaderMap>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
+    async fn request(
+        &self,
+        subject: &str,
+        payload: &[u8],
+        headers: Option<&HeaderMap>,
+    ) -> Result<BrokerMessage, Box<dyn std::error::Error + Send + Sync>>;
 }

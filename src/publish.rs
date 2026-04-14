@@ -1,7 +1,8 @@
 use crate::brokers::Broker;
-use crate::brokers::base::HeaderMap;
+use crate::brokers::base::{BrokerMessage, HeaderMap};
 use crate::errors::CrabbyError;
 use bytes::Bytes;
+use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::future::Future;
 use std::future::IntoFuture;
@@ -9,6 +10,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 type PublishFuture = Pin<Box<dyn Future<Output = Result<(), CrabbyError>> + Send>>;
+type RequestFuture = Pin<Box<dyn Future<Output = Result<Reply, CrabbyError>> + Send>>;
 
 #[doc(hidden)]
 pub struct PreparedPublishPayload {
@@ -18,6 +20,7 @@ pub struct PreparedPublishPayload {
 
 trait PublishBackend: Send + Sync {
     fn publish(&self, subject: String, payload: Vec<u8>, headers: Option<HeaderMap>) -> PublishFuture;
+    fn request(&self, subject: String, payload: Vec<u8>, headers: Option<HeaderMap>) -> RequestFuture;
 }
 
 impl<B> PublishBackend for B
@@ -27,6 +30,14 @@ where
     fn publish(&self, subject: String, payload: Vec<u8>, headers: Option<HeaderMap>) -> PublishFuture {
         let broker = self.clone();
         Box::pin(async move { broker.publish(&subject, &payload, headers.as_ref()).await })
+    }
+
+    fn request(&self, subject: String, payload: Vec<u8>, headers: Option<HeaderMap>) -> RequestFuture {
+        let broker = self.clone();
+        Box::pin(async move {
+            let reply = broker.request(&subject, &payload, headers.as_ref()).await?;
+            Ok(Reply::from_broker_message(reply))
+        })
     }
 }
 
@@ -42,7 +53,13 @@ pub struct Publisher {
 }
 
 impl Publisher {
-    pub(crate) fn new<B>(broker: B) -> Self
+    /// Creates a broker-backed publisher or request client.
+    ///
+    /// `Publisher` is injected automatically into handlers through the
+    /// `Publish` extractor, but it can also be created manually when the
+    /// application needs to publish messages or perform RPC-style requests
+    /// outside of a handler.
+    pub fn new<B>(broker: B) -> Self
     where
         B: Broker + Clone,
     {
@@ -71,6 +88,27 @@ impl Publisher {
             extra_headers: None,
         }
     }
+
+    /// Starts building an RPC-style request for a route key.
+    ///
+    /// The payload uses the same wrappers as [`Publisher::publish`], and the
+    /// returned reply can be decoded with [`Reply::into_json`] or
+    /// [`Reply::into_cbor`].
+    pub fn request<P>(
+        &self,
+        subject: &str,
+        payload: P,
+    ) -> Request
+    where
+        P: IntoPublishPayload,
+    {
+        Request {
+            publisher: self.clone(),
+            subject: subject.to_string(),
+            prepared: payload.into_publish_payload(),
+            extra_headers: None,
+        }
+    }
 }
 
 #[doc(hidden)]
@@ -93,6 +131,21 @@ impl PublishRequest {
     }
 }
 
+pub struct Request {
+    publisher: Publisher,
+    subject: String,
+    prepared: Result<PreparedPublishPayload, CrabbyError>,
+    extra_headers: Option<HeaderMap>,
+}
+
+impl Request {
+    /// Adds or overrides message headers before sending the request.
+    pub fn headers(mut self, headers: HeaderMap) -> Self {
+        self.extra_headers = Some(headers);
+        self
+    }
+}
+
 impl IntoFuture for PublishRequest {
     type Output = Result<(), CrabbyError>;
     type IntoFuture = PublishFuture;
@@ -107,6 +160,70 @@ impl IntoFuture for PublishRequest {
                 .publish(self.subject, prepared.payload, headers)
                 .await
         })
+    }
+}
+
+impl IntoFuture for Request {
+    type Output = Result<Reply, CrabbyError>;
+    type IntoFuture = RequestFuture;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(async move {
+            let prepared = self.prepared?;
+            let headers = merge_headers(prepared.headers, self.extra_headers);
+
+            self.publisher
+                .inner
+                .request(self.subject, prepared.payload, headers)
+                .await
+        })
+    }
+}
+
+/// A broker reply returned by [`Publisher::request`].
+pub struct Reply {
+    subject: String,
+    payload: Vec<u8>,
+    headers: Option<HeaderMap>,
+}
+
+impl Reply {
+    fn from_broker_message(message: BrokerMessage) -> Self {
+        Self {
+            subject: message.subject,
+            payload: message.payload,
+            headers: message.headers,
+        }
+    }
+
+    pub fn subject(&self) -> &str {
+        &self.subject
+    }
+
+    pub fn payload(&self) -> &[u8] {
+        &self.payload
+    }
+
+    pub fn headers(&self) -> Option<&HeaderMap> {
+        self.headers.as_ref()
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.payload
+    }
+
+    pub fn into_json<T>(self) -> Result<T, CrabbyError>
+    where
+        T: DeserializeOwned,
+    {
+        Ok(serde_json::from_slice(&self.payload)?)
+    }
+
+    pub fn into_cbor<T>(self) -> Result<T, CrabbyError>
+    where
+        T: DeserializeOwned,
+    {
+        Ok(ciborium::from_reader(self.payload.as_slice())?)
     }
 }
 

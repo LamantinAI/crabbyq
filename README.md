@@ -16,7 +16,7 @@ CrabbyQ abstracts away broker subscription loops and route dispatching so you ca
 - `route_service(...)` for raw `tower::Service` integration.
 - Axum-like extractors such as `State<T>`, `Subject`, `Headers`, `Body`, `Json<T>`, and `Cbor<T>`.
 - Framework-managed publishing through `Publish` and `Publisher`.
-- RPC-style request-reply through handler return values.
+- RPC-style request-reply through handler return values and `Publisher::request(...)`.
 - Always-on error logging with optional router-scoped and service-level error topics.
 - Multi-argument handler support with the axum-style rule that body-consuming extractors go last.
 - A working NATS broker backend.
@@ -33,7 +33,7 @@ use tracing::info;
 async fn handle_async_event(
     event: Event,
 ) -> CrabbyResult<()> {
-    info!("🦀 Stateless handler got event: {}", event.subject());
+    info!("Stateless handler got event: {}", event.subject());
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
     info!("Stateless work done for: {}", event.subject());
     Ok(())
@@ -120,13 +120,9 @@ async fn handle_sum(
 
 ## Examples
 
-- `examples/basic.rs`: stateless handlers.
-- `examples/basic_state.rs`: shared state in handlers.
-- `examples/basic_rpc.rs`: RPC-style request-reply through return values.
-- `examples/custom_error_rpc.rs`: custom error types that implement `IntoResponse`.
-- `examples/multirouter.rs`: composing several routers with `include(...)`.
-- `examples/extractors.rs`: `State`, `Headers`, `Subject`, `Body`, `Json`, and `Cbor`.
-- `examples/publishers.rs`: publishing follow-up messages through `Publish`.
+The repository includes runnable examples for stateless handlers, state,
+extractors, publishers, RPC, multi-router composition, and graceful shutdown.
+See [`examples/README.md`](examples/README.md) for the full list of runnable examples and example commands.
 
 ## Architecture Notes
 
