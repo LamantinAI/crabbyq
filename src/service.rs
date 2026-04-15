@@ -8,12 +8,12 @@ pub struct CrabbyService<B> {
 }
 
 use crate::brokers::Broker;
-use crate::brokers::base::HeaderMap;
+use crate::brokers::base::{BrokerError, BrokerMessage, HeaderMap};
 use crate::errors::CrabbyError;
 use crate::event::Event;
 use crate::publish::{Publisher, json_payload};
 use crate::response::{HandlerOutcome, error_outcome};
-use futures_util::StreamExt;
+use futures_util::{Stream, StreamExt};
 use serde::Serialize;
 use std::future::Future;
 use std::pin::Pin;
@@ -23,11 +23,19 @@ use tower::util::BoxService;
 
 type ShutdownSignal = Pin<Box<dyn Future<Output = ()> + Send>>;
 type ShutdownHookFuture = Pin<Box<dyn Future<Output = Result<(), CrabbyError>> + Send>>;
+pub(crate) type ServiceMessageStream = Pin<Box<dyn Stream<Item = BrokerMessage> + Send + Unpin>>;
+pub(crate) type MessageStreamInitFuture =
+    Pin<Box<dyn Future<Output = Result<ServiceMessageStream, BrokerError>> + Send>>;
+
+pub(crate) trait MessageStreamFactory: Send {
+    fn init(self: Box<Self>) -> MessageStreamInitFuture;
+}
 
 pub(crate) struct ServiceRoute {
     pub(crate) subject: String,
     pub(crate) error_topic: Option<String>,
     pub(crate) error_headers: Option<HeaderMap>,
+    pub(crate) stream_factory: Option<Box<dyn MessageStreamFactory>>,
     pub(crate) service: BoxService<Event, HandlerOutcome, CrabbyError>,
 }
 
@@ -130,18 +138,35 @@ where
     pub async fn serve(mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let publisher = Publisher::new(self.broker.clone());
 
-        // Collecting ass subject's for subsription
-        let subjects: Vec<String> = self.routes.iter().map(|route| route.subject.clone()).collect();
-        
-        if subjects.is_empty() {
+        // Collecting subjects for plain broker subscription
+        let subjects: Vec<String> = self
+            .routes
+            .iter()
+            .filter(|route| route.stream_factory.is_none())
+            .map(|route| route.subject.clone())
+            .collect();
+
+        let mut streams: Vec<ServiceMessageStream> = Vec::new();
+
+        if !subjects.is_empty() {
+            tracing::info!("Subscribing to subjects: {:?}", subjects);
+            streams.push(Box::pin(self.broker.subscribe(&subjects).await?));
+        }
+
+        for route in &mut self.routes {
+            if let Some(factory) = route.stream_factory.take() {
+                streams.push(factory.init().await?);
+            }
+        }
+
+        if streams.is_empty() {
             tracing::warn!("No routes registered, service will not subscribe to any subjects");
             self.wait_for_shutdown().await?;
             self.run_shutdown_hook(publisher).await;
             return Ok(());
         }
 
-        tracing::info!("Subscribing to subjects: {:?}", subjects);
-        let mut stream = self.broker.subscribe(&subjects).await?;
+        let mut stream = futures_util::stream::select_all(streams);
 
         tracing::info!("CrabbyQ service started!");
 
@@ -176,7 +201,8 @@ where
             return Ok(());
         }
 
-        tokio::signal::ctrl_c().await
+        tokio::signal::ctrl_c()
+            .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }
 
@@ -190,14 +216,10 @@ where
         }
     }
 
-    async fn handle_message(&mut self, msg: crate::brokers::base::BrokerMessage) {
+    async fn handle_message(&mut self, mut msg: BrokerMessage) {
         let subject = msg.subject.clone();
-        let event = Event::new(
-            msg.subject,
-            msg.payload.into(),
-            msg.headers,
-            msg.reply_to,
-        );
+        let acknowledger = msg.acknowledger.take();
+        let event = Event::new(msg.subject, msg.payload.into(), msg.headers, msg.reply_to);
 
         match self.dispatch_event(&subject, event).await {
             Some(result) => {
@@ -210,8 +232,13 @@ where
                 let headers = result.headers.clone();
                 let payload = result.payload.clone();
 
-                Self::publish_reply(&self.broker, &subject, reply_to.as_deref(), result.outcome.response)
-                    .await;
+                Self::publish_reply(
+                    &self.broker,
+                    &subject,
+                    reply_to.as_deref(),
+                    result.outcome.response,
+                )
+                .await;
                 Self::publish_error(
                     &self.broker,
                     &subject,
@@ -225,8 +252,25 @@ where
                     payload,
                 )
                 .await;
+
+                if result.outcome.error_message.is_none() {
+                    Self::ack_message(&subject, acknowledger).await;
+                }
             }
             None => tracing::warn!("No handler found for subject: {}", subject),
+        }
+    }
+
+    async fn ack_message(
+        subject: &str,
+        acknowledger: Option<Box<dyn crate::brokers::base::Acknowledger>>,
+    ) {
+        let Some(acknowledger) = acknowledger else {
+            return;
+        };
+
+        if let Err(error) = acknowledger.ack().await {
+            tracing::error!("Ack error for subject '{}': {}", subject, error);
         }
     }
 
@@ -305,11 +349,7 @@ where
         }
     }
 
-    async fn dispatch_event(
-        &mut self,
-        subject: &str,
-        event: Event,
-    ) -> Option<DispatchResult> {
+    async fn dispatch_event(&mut self, subject: &str, event: Event) -> Option<DispatchResult> {
         let reply_to = event.reply_to().map(str::to_owned);
         let headers = event.headers().cloned();
         let payload = event.payload.clone().to_vec();
@@ -325,7 +365,11 @@ where
                     Err(e) => match error_outcome(e) {
                         Ok(outcome) => outcome,
                         Err(error) => {
-                            tracing::error!("Failed to convert service error for subject '{}': {}", subject, error);
+                            tracing::error!(
+                                "Failed to convert service error for subject '{}': {}",
+                                subject,
+                                error
+                            );
                             HandlerOutcome {
                                 response: None,
                                 error_message: Some("internal handler error".to_string()),
@@ -336,7 +380,11 @@ where
                 Err(e) => match error_outcome(e) {
                     Ok(outcome) => outcome,
                     Err(error) => {
-                        tracing::error!("Failed to convert readiness error for subject '{}': {}", subject, error);
+                        tracing::error!(
+                            "Failed to convert readiness error for subject '{}': {}",
+                            subject,
+                            error
+                        );
                         HandlerOutcome {
                             response: None,
                             error_message: Some("service readiness error".to_string()),

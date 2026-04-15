@@ -2,8 +2,11 @@ mod common;
 
 use common::{TestBroker, TestBrokerMessage};
 use crabbyq::prelude::*;
+use crabbyq::response::HandlerOutcome;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
+use tower::{Layer, Service};
 
 #[derive(Clone)]
 struct AppState {
@@ -65,6 +68,50 @@ async fn noop_handler(_event: Event) -> CrabbyResult<()> {
     Ok(())
 }
 
+#[derive(Clone)]
+struct RecordingLayer {
+    seen: Arc<Mutex<Vec<String>>>,
+}
+
+impl<S> Layer<S> for RecordingLayer {
+    type Service = RecordingService<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        RecordingService {
+            inner,
+            seen: self.seen.clone(),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct RecordingService<S> {
+    inner: S,
+    seen: Arc<Mutex<Vec<String>>>,
+}
+
+impl<S> Service<Event> for RecordingService<S>
+where
+    S: Service<Event, Response = HandlerOutcome, Error = CrabbyError> + Send,
+    S::Future: Send + 'static,
+{
+    type Response = HandlerOutcome;
+    type Error = CrabbyError;
+    type Future = S::Future;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, request: Event) -> Self::Future {
+        self.seen
+            .lock()
+            .unwrap()
+            .push(request.subject().to_string());
+        self.inner.call(request)
+    }
+}
+
 #[test]
 #[should_panic(expected = "duplicate route key 'dup' is already registered")]
 fn duplicate_route_keys_panic() {
@@ -90,7 +137,9 @@ async fn state_subject_and_json_extractors_work_together() {
         .set_state(state)
         .route(
             "orders.created",
-            |State(shared): State<SharedRecords>, Subject(subject): Subject, Json(payload): Json<Payload>| async move {
+            |State(shared): State<SharedRecords>,
+             Subject(subject): Subject,
+             Json(payload): Json<Payload>| async move {
                 shared
                     .0
                     .lock()
@@ -116,10 +165,13 @@ async fn routes_registers_one_handler_for_multiple_subjects() {
 
     let app = Router::new()
         .set_state(records.clone())
-        .routes(["alpha", "beta"], |event: Event, records: Arc<Mutex<Vec<String>>>| async move {
-            records.lock().unwrap().push(event.subject().to_string());
-            Ok::<(), CrabbyError>(())
-        })
+        .routes(
+            ["alpha", "beta"],
+            |event: Event, records: Arc<Mutex<Vec<String>>>| async move {
+                records.lock().unwrap().push(event.subject().to_string());
+                Ok::<(), CrabbyError>(())
+            },
+        )
         .into_service(broker);
 
     app.serve().await.unwrap();
@@ -137,7 +189,12 @@ async fn publisher_extractor_emits_follow_up_message() {
             "source",
             |Publish(publisher): Publish, Subject(subject): Subject| async move {
                 publisher
-                    .publish("follow-up", Json(Payload { id: subject.len() as u32 }))
+                    .publish(
+                        "follow-up",
+                        Json(Payload {
+                            id: subject.len() as u32,
+                        }),
+                    )
                     .await?;
                 Ok::<(), CrabbyError>(())
             },
@@ -163,7 +220,11 @@ async fn rpc_reply_is_published_to_reply_subject() {
     let broker = TestBroker::new(vec![
         TestBrokerMessage::new(
             "sum",
-            serde_json::to_vec(&SumRequest { left: 20, right: 22 }).unwrap(),
+            serde_json::to_vec(&SumRequest {
+                left: 20,
+                right: 22,
+            })
+            .unwrap(),
         )
         .with_reply_to("_reply.sum"),
     ]);
@@ -193,17 +254,18 @@ async fn rpc_reply_is_published_to_reply_subject() {
 
 #[tokio::test]
 async fn service_level_error_topic_is_used_as_fallback() {
-    let message_headers = HeaderMap::from([
-        ("trace-id".to_string(), "abc".to_string()),
-    ]);
+    let message_headers = HeaderMap::from([("trace-id".to_string(), "abc".to_string())]);
 
     let broker = TestBroker::new(vec![
-        TestBrokerMessage::new("jobs.run", b"payload".to_vec()).with_headers(message_headers.clone()),
+        TestBrokerMessage::new("jobs.run", b"payload".to_vec())
+            .with_headers(message_headers.clone()),
     ]);
     let published_broker = broker.clone();
 
     let app = Router::new()
-        .route("jobs.run", |_event: Event| async move { Err::<(), _>(TestError("job failed")) })
+        .route("jobs.run", |_event: Event| async move {
+            Err::<(), _>(TestError("job failed"))
+        })
         .into_service(broker)
         .on_error("errors.default");
 
@@ -227,9 +289,10 @@ async fn service_level_error_topic_is_used_as_fallback() {
 
 #[tokio::test]
 async fn router_error_topic_overrides_service_fallback_and_merges_headers() {
-    let broker = TestBroker::new(vec![
-        TestBrokerMessage::new("camera.sync", b"frame".to_vec()),
-    ]);
+    let broker = TestBroker::new(vec![TestBrokerMessage::new(
+        "camera.sync",
+        b"frame".to_vec(),
+    )]);
     let published_broker = broker.clone();
 
     let route_headers = HeaderMap::from([
@@ -244,7 +307,9 @@ async fn router_error_topic_overrides_service_fallback_and_merges_headers() {
     let app = Router::new()
         .on_error("errors.camera")
         .error_headers(route_headers)
-        .route("camera.sync", |_event: Event| async move { Err::<(), _>(TestError("camera failed")) })
+        .route("camera.sync", |_event: Event| async move {
+            Err::<(), _>(TestError("camera failed"))
+        })
         .into_service(broker)
         .dlq("errors.default")
         .error_headers(service_headers);
@@ -256,7 +321,10 @@ async fn router_error_topic_overrides_service_fallback_and_merges_headers() {
     assert_eq!(published[0].subject, "errors.camera");
 
     let headers = published[0].headers.as_ref().unwrap();
-    assert_eq!(headers.get("content-type"), Some(&"application/json".to_string()));
+    assert_eq!(
+        headers.get("content-type"),
+        Some(&"application/json".to_string())
+    );
     assert_eq!(headers.get("x-service"), Some(&"default".to_string()));
     assert_eq!(headers.get("x-router"), Some(&"camera".to_string()));
     assert_eq!(headers.get("x-shared"), Some(&"route".to_string()));
@@ -304,7 +372,13 @@ async fn publisher_request_returns_decodable_reply() {
     let publisher = Publisher::new(broker);
 
     let reply = publisher
-        .request("rpc.sum", Json(SumRequest { left: 19, right: 23 }))
+        .request(
+            "rpc.sum",
+            Json(SumRequest {
+                left: 19,
+                right: 23,
+            }),
+        )
         .await
         .unwrap();
 
@@ -320,4 +394,21 @@ async fn publisher_request_returns_decodable_reply() {
     let requests = recorded_broker.requested_messages();
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].subject, "rpc.sum");
+}
+
+#[tokio::test]
+async fn router_layer_wraps_registered_routes() {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let broker = TestBroker::new(vec![TestBrokerMessage::new("layered", Vec::new())]);
+
+    let app = Router::new()
+        .route("layered", |_event: Event| async move {
+            Ok::<(), CrabbyError>(())
+        })
+        .layer(RecordingLayer { seen: seen.clone() })
+        .into_service(broker);
+
+    app.serve().await.unwrap();
+
+    assert_eq!(seen.lock().unwrap().as_slice(), ["layered"]);
 }

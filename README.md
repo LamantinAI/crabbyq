@@ -14,12 +14,15 @@ CrabbyQ abstracts away broker subscription loops and route dispatching so you ca
 - `route(...)` for a single route key and `routes(...)` for many route keys on one handler.
 - `include(...)` for composing several routers into one service without imposing HTTP-like path nesting.
 - `route_service(...)` for raw `tower::Service` integration.
+- `layer(...)` for applying `tower::Layer` middleware to router routes.
 - Axum-like extractors such as `State<T>`, `Subject`, `Headers`, `Body`, `Json<T>`, and `Cbor<T>`.
 - Framework-managed publishing through `Publish` and `Publisher`.
+- `NatsPublisher` as a NATS-specific publishing layer on top of the core publisher API.
 - RPC-style request-reply through handler return values and `Publisher::request(...)`.
 - Always-on error logging with optional router-scoped and service-level error topics.
 - Multi-argument handler support with the axum-style rule that body-consuming extractors go last.
 - A working NATS broker backend.
+- `NatsRouter` for NATS-specific routing, including JetStream-backed routes through `jetstream(...)`, `js_route(...)`, and `js_durable_route(...)`.
 
 ## Quick Start
 
@@ -134,17 +137,31 @@ See [`examples/README.md`](examples/README.md) for the full list of runnable exa
   - `FromEvent<S>` for full-event or payload-consuming values.
 - Publishers are injected by the framework at `into_service(...)` time, so
   handlers can publish without manually wiring broker clients through state.
+- `Publisher` stays broker-agnostic and is the capability injected into
+  handlers. Broker-specific publishing features live in broker-specific
+  publishers such as `NatsPublisher`.
 - RPC replies are sent automatically when the incoming message carries `reply_to`
   metadata and the handler returns a response value.
+- Middleware is exposed through `Router::layer(...)` and currently composes
+  routes through boxed `tower::Service`s for implementation simplicity.
+  A more zero-cost internal pipeline is planned as the framework matures.
+- Broker-specific features live in broker-specific routers. For example,
+  `NatsRouter` extends the core `Router` with JetStream route bindings while
+  still allowing plain NATS routes in the same service.
+- CrabbyQ focuses on routing and service ergonomics. For NATS JetStream
+  storage APIs such as Key-Value and Object Store, `async-nats` already
+  provides a solid API, so CrabbyQ does not add extra wrapper layers there.
 
 ## Roadmap
 
 The project is in its early stages (v0.1.0). Future development focuses on:
 
-- Middleware and `tower::Layer` integration on the router level.
-- Framework-managed publishers and publish helpers via extractors.
+- A more zero-cost internal middleware pipeline on top of the current
+  `tower::Layer` integration.
+- Broker-specific extractors for transport metadata such as NATS and JetStream
+  delivery context.
+- Better typed rejection and error response handling.
 - More broker backends such as RabbitMQ, Kafka, and Redis.
-- Richer extractor coverage, broker metadata, and better rejection/error types.
 - Additional payload formats such as Protobuf and MsgPack.
 
 ## Contributing

@@ -4,9 +4,11 @@ use crate::errors::CrabbyError;
 use crate::event::Event;
 use crate::extract::RuntimeState;
 use crate::handler::IntoHandler;
-use crate::response::HandlerOutcome;
 use crate::publish::Publisher;
-use crate::service::CrabbyService;
+use crate::response::HandlerOutcome;
+use crate::service::{CrabbyService, MessageStreamFactory};
+use std::sync::Arc;
+use tower::Layer;
 use tower::Service;
 use tower::util::BoxService;
 
@@ -19,16 +21,53 @@ pub struct Router<S = ()> {
     state: S,
     error_topic: Option<String>,
     error_headers: Option<HeaderMap>,
+    layers: Vec<Arc<dyn RouteLayer>>,
 }
 
 trait RouteBuilder: Send {
-    fn build(self: Box<Self>, publisher: Publisher) -> BoxService<Event, HandlerOutcome, CrabbyError>;
+    fn build(
+        self: Box<Self>,
+        publisher: Publisher,
+    ) -> BoxService<Event, HandlerOutcome, CrabbyError>;
+}
+
+trait RouteLayer: Send + Sync {
+    fn layer(
+        &self,
+        service: BoxService<Event, HandlerOutcome, CrabbyError>,
+    ) -> BoxService<Event, HandlerOutcome, CrabbyError>;
+}
+
+struct TowerRouteLayer<L> {
+    layer: L,
+}
+
+impl<L> TowerRouteLayer<L> {
+    fn new(layer: L) -> Self {
+        Self { layer }
+    }
+}
+
+impl<L> RouteLayer for TowerRouteLayer<L>
+where
+    L: Layer<BoxService<Event, HandlerOutcome, CrabbyError>> + Send + Sync + 'static,
+    L::Service: Service<Event, Response = HandlerOutcome, Error = CrabbyError> + Send + 'static,
+    <L::Service as Service<Event>>::Future: Send + 'static,
+{
+    fn layer(
+        &self,
+        service: BoxService<Event, HandlerOutcome, CrabbyError>,
+    ) -> BoxService<Event, HandlerOutcome, CrabbyError> {
+        BoxService::new(self.layer.layer(service))
+    }
 }
 
 struct RouteDefinition {
     subject: String,
     error_topic: Option<String>,
     error_headers: Option<HeaderMap>,
+    layers: Vec<Arc<dyn RouteLayer>>,
+    stream_factory: Option<Box<dyn MessageStreamFactory>>,
     builder: Box<dyn RouteBuilder>,
 }
 
@@ -67,7 +106,10 @@ where
     H: IntoHandler<RuntimeState<S>, T> + Send + 'static,
     S: Clone + Send + Sync + 'static,
 {
-    fn build(self: Box<Self>, publisher: Publisher) -> BoxService<Event, HandlerOutcome, CrabbyError> {
+    fn build(
+        self: Box<Self>,
+        publisher: Publisher,
+    ) -> BoxService<Event, HandlerOutcome, CrabbyError> {
         let Self { inner, .. } = *self;
         let HandlerRoute { handler, state, .. } = inner;
         handler.into_handler(RuntimeState::new(state, publisher))
@@ -89,7 +131,10 @@ where
     T: Service<Event, Response = HandlerOutcome, Error = CrabbyError> + Send + 'static,
     T::Future: Send + 'static,
 {
-    fn build(self: Box<Self>, _publisher: Publisher) -> BoxService<Event, HandlerOutcome, CrabbyError> {
+    fn build(
+        self: Box<Self>,
+        _publisher: Publisher,
+    ) -> BoxService<Event, HandlerOutcome, CrabbyError> {
         BoxService::new(self.service)
     }
 }
@@ -102,6 +147,7 @@ impl Router<()> {
             state: (),
             error_topic: None,
             error_headers: None,
+            layers: Vec::new(),
         }
     }
 
@@ -112,6 +158,7 @@ impl Router<()> {
             state,
             error_topic: self.error_topic,
             error_headers: self.error_headers,
+            layers: self.layers,
         }
     }
 }
@@ -152,8 +199,29 @@ impl<S: Clone + Send + Sync + 'static> Router<S> {
             subject: subject.to_string(),
             error_topic: self.error_topic.clone(),
             error_headers: self.error_headers.clone(),
+            layers: self.layers.clone(),
+            stream_factory: None,
             builder: Box::new(ServiceRoute::new(service)),
         });
+        self
+    }
+
+    /// Applies a `tower::Layer` to all routes in this router.
+    ///
+    /// The layer is attached to already registered routes and is also applied
+    /// to routes added later. When routers are combined with [`Router::include`],
+    /// each included route keeps the layers it was defined with.
+    pub fn layer<L>(mut self, layer: L) -> Self
+    where
+        L: Layer<BoxService<Event, HandlerOutcome, CrabbyError>> + Send + Sync + 'static,
+        L::Service: Service<Event, Response = HandlerOutcome, Error = CrabbyError> + Send + 'static,
+        <L::Service as Service<Event>>::Future: Send + 'static,
+    {
+        let layer = Arc::new(TowerRouteLayer::new(layer)) as Arc<dyn RouteLayer>;
+        self.layers.push(layer.clone());
+        for route in &mut self.routes {
+            route.layers.push(layer.clone());
+        }
         self
     }
 
@@ -209,7 +277,38 @@ impl<S: Clone + Send + Sync + 'static> Router<S> {
             subject: subject.to_string(),
             error_topic: self.error_topic.clone(),
             error_headers: self.error_headers.clone(),
-            builder: Box::new(TypedHandlerRoute::<H, S, T>::new(handler, self.state.clone())),
+            layers: self.layers.clone(),
+            stream_factory: None,
+            builder: Box::new(TypedHandlerRoute::<H, S, T>::new(
+                handler,
+                self.state.clone(),
+            )),
+        });
+        self
+    }
+
+    pub(crate) fn route_with_stream_factory<H, T, F>(
+        mut self,
+        subject: &str,
+        handler: H,
+        stream_factory: F,
+    ) -> Self
+    where
+        H: IntoHandler<RuntimeState<S>, T> + Send + 'static,
+        T: 'static,
+        F: MessageStreamFactory + 'static,
+    {
+        self.assert_route_available(subject);
+        self.routes.push(RouteDefinition {
+            subject: subject.to_string(),
+            error_topic: self.error_topic.clone(),
+            error_headers: self.error_headers.clone(),
+            layers: self.layers.clone(),
+            stream_factory: Some(Box::new(stream_factory)),
+            builder: Box::new(TypedHandlerRoute::<H, S, T>::new(
+                handler,
+                self.state.clone(),
+            )),
         });
         self
     }
@@ -222,16 +321,24 @@ impl<S: Clone + Send + Sync + 'static> Router<S> {
     }
 
     /// Consumes the router and binds it to a broker-backed service.
-    pub fn into_service<B:Broker + Clone>(self, broker: B) -> CrabbyService<B> {
+    pub fn into_service<B: Broker + Clone>(self, broker: B) -> CrabbyService<B> {
         let publisher = Publisher::new(broker.clone());
         let routes = self
             .routes
             .into_iter()
-            .map(|route| crate::service::ServiceRoute {
-                subject: route.subject,
-                error_topic: route.error_topic,
-                error_headers: route.error_headers,
-                service: route.builder.build(publisher.clone()),
+            .map(|route| {
+                let mut service = route.builder.build(publisher.clone());
+                for layer in route.layers {
+                    service = layer.layer(service);
+                }
+
+                crate::service::ServiceRoute {
+                    subject: route.subject,
+                    error_topic: route.error_topic,
+                    error_headers: route.error_headers,
+                    stream_factory: route.stream_factory,
+                    service,
+                }
             })
             .collect();
 

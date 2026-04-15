@@ -91,6 +91,7 @@ impl Broker for TestBroker {
                 payload: message.payload,
                 headers: message.headers,
                 reply_to: message.reply_to,
+                acknowledger: None,
             })
             .collect();
 
@@ -135,6 +136,7 @@ impl Broker for TestBroker {
             payload: message.payload,
             headers: message.headers,
             reply_to: message.reply_to,
+            acknowledger: None,
         })
     }
 }

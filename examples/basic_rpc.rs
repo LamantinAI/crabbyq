@@ -15,9 +15,7 @@ struct SumResponse {
     result: i32,
 }
 
-async fn handle_sum(
-    Json(payload): Json<SumRequest>,
-) -> CrabbyResult<Json<SumResponse>> {
+async fn handle_sum(Json(payload): Json<SumRequest>) -> CrabbyResult<Json<SumResponse>> {
     Ok(Json(SumResponse {
         result: payload.left + payload.right,
     }))
@@ -50,7 +48,13 @@ async fn main() -> CrabbyResult<()> {
 
     // Sending a request through the framework-managed RPC API.
     let reply = publisher
-        .request("rpc.sum", Json(SumRequest { left: 20, right: 22 }))
+        .request(
+            "rpc.sum",
+            Json(SumRequest {
+                left: 20,
+                right: 22,
+            }),
+        )
         .await?;
     let response: SumResponse = reply.into_json()?;
 

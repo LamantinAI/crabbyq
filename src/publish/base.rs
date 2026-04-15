@@ -2,8 +2,8 @@ use crate::brokers::Broker;
 use crate::brokers::base::{BrokerMessage, HeaderMap};
 use crate::errors::CrabbyError;
 use bytes::Bytes;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::future::Future;
 use std::future::IntoFuture;
 use std::pin::Pin;
@@ -19,20 +19,40 @@ pub struct PreparedPublishPayload {
 }
 
 trait PublishBackend: Send + Sync {
-    fn publish(&self, subject: String, payload: Vec<u8>, headers: Option<HeaderMap>) -> PublishFuture;
-    fn request(&self, subject: String, payload: Vec<u8>, headers: Option<HeaderMap>) -> RequestFuture;
+    fn publish(
+        &self,
+        subject: String,
+        payload: Vec<u8>,
+        headers: Option<HeaderMap>,
+    ) -> PublishFuture;
+    fn request(
+        &self,
+        subject: String,
+        payload: Vec<u8>,
+        headers: Option<HeaderMap>,
+    ) -> RequestFuture;
 }
 
 impl<B> PublishBackend for B
 where
     B: Broker + Clone,
 {
-    fn publish(&self, subject: String, payload: Vec<u8>, headers: Option<HeaderMap>) -> PublishFuture {
+    fn publish(
+        &self,
+        subject: String,
+        payload: Vec<u8>,
+        headers: Option<HeaderMap>,
+    ) -> PublishFuture {
         let broker = self.clone();
         Box::pin(async move { broker.publish(&subject, &payload, headers.as_ref()).await })
     }
 
-    fn request(&self, subject: String, payload: Vec<u8>, headers: Option<HeaderMap>) -> RequestFuture {
+    fn request(
+        &self,
+        subject: String,
+        payload: Vec<u8>,
+        headers: Option<HeaderMap>,
+    ) -> RequestFuture {
         let broker = self.clone();
         Box::pin(async move {
             let reply = broker.request(&subject, &payload, headers.as_ref()).await?;
@@ -73,11 +93,7 @@ impl Publisher {
     /// The payload can be wrapped in `Json(...)`, `Cbor(...)`, `Body(...)`, or
     /// passed as raw bytes/string types. Use `.headers(...)` on the returned
     /// request builder to attach additional headers before awaiting it.
-    pub fn publish<P>(
-        &self,
-        subject: &str,
-        payload: P,
-    ) -> PublishRequest
+    pub fn publish<P>(&self, subject: &str, payload: P) -> PublishRequest
     where
         P: IntoPublishPayload,
     {
@@ -94,11 +110,7 @@ impl Publisher {
     /// The payload uses the same wrappers as [`Publisher::publish`], and the
     /// returned reply can be decoded with [`Reply::into_json`] or
     /// [`Reply::into_cbor`].
-    pub fn request<P>(
-        &self,
-        subject: &str,
-        payload: P,
-    ) -> Request
+    pub fn request<P>(&self, subject: &str, payload: P) -> Request
     where
         P: IntoPublishPayload,
     {
@@ -227,7 +239,7 @@ impl Reply {
     }
 }
 
-fn merge_headers(base: Option<HeaderMap>, extra: Option<HeaderMap>) -> Option<HeaderMap> {
+pub fn merge_headers(base: Option<HeaderMap>, extra: Option<HeaderMap>) -> Option<HeaderMap> {
     match (base, extra) {
         (None, None) => None,
         (Some(headers), None) | (None, Some(headers)) => Some(headers),
@@ -274,7 +286,7 @@ impl IntoPublishPayload for &str {
     }
 }
 
-pub(crate) fn json_payload<T>(value: T) -> Result<PreparedPublishPayload, CrabbyError>
+pub fn json_payload<T>(value: T) -> Result<PreparedPublishPayload, CrabbyError>
 where
     T: Serialize,
 {
@@ -287,7 +299,7 @@ where
     })
 }
 
-pub(crate) fn cbor_payload<T>(value: T) -> Result<PreparedPublishPayload, CrabbyError>
+pub fn cbor_payload<T>(value: T) -> Result<PreparedPublishPayload, CrabbyError>
 where
     T: Serialize,
 {

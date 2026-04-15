@@ -1,6 +1,6 @@
 use crate::errors::CrabbyError;
-use crate::extract::{FromEvent, FromEventParts, FromRef, RuntimeState};
 use crate::event::Event;
+use crate::extract::{FromEvent, FromEventParts, FromRef, RuntimeState};
 use crate::response::{HandlerOutcome, IntoHandlerResult};
 use std::future::Future;
 use std::marker::PhantomData;
@@ -210,14 +210,7 @@ where
         Box::pin(async move {
             let (mut parts, payload) = event.into_parts();
             let first = A::from_event_parts(&mut parts, &state).await?;
-            let second = B::from_event(
-                Event {
-                    parts,
-                    payload,
-                },
-                &state,
-            )
-            .await?;
+            let second = B::from_event(Event { parts, payload }, &state).await?;
             f(first, second).await.into_handler_result()
         })
     }
@@ -339,7 +332,10 @@ where
     S: Clone + Send + Sync + 'static,
     T: FromRef<S> + Send + 'static,
 {
-    fn into_handler(self, state: RuntimeState<S>) -> BoxService<Event, HandlerOutcome, CrabbyError> {
+    fn into_handler(
+        self,
+        state: RuntimeState<S>,
+    ) -> BoxService<Event, HandlerOutcome, CrabbyError> {
         BoxService::new(StatefulHandler::new(
             move |event, state: RuntimeState<S>| {
                 let extracted = T::from_ref(&state.app_state);

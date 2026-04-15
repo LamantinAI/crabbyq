@@ -13,13 +13,11 @@ async fn handle_billing_event(event: Event) -> CrabbyResult<()> {
 }
 
 fn user_router() -> Router {
-    Router::new()
-        .route("user.created", handle_user_created)
+    Router::new().route("user.created", handle_user_created)
 }
 
 fn billing_router() -> Router {
-    Router::new()
-        .routes(["invoice.paid", "invoice.refunded"], handle_billing_event)
+    Router::new().routes(["invoice.paid", "invoice.refunded"], handle_billing_event)
 }
 
 #[tokio::main]

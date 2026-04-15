@@ -44,6 +44,16 @@ cargo run --example <name>
   Publish a trigger message with:
   `nats pub events.source '{}'`
 
+- `jetstream`: mixes plain NATS routes with JetStream-backed routes through `NatsRouter`.
+  The example creates a stream with `async-nats`, binds it with
+  `jetstream(...)`, publishes through `NatsPublisher::js_publish(...)`,
+  exercises both `js_route(...)` and `js_durable_route(...)`, then shuts down
+  automatically.
+
+- `middleware`: applies a custom `tower::Layer` to router routes.
+  Publish a message with:
+  `nats pub events.logs 'hello'`
+
 - `graceful_shutdown`: custom graceful shutdown signal and `on_shutdown(...)` hook.
   Publish a message with:
   `nats pub service.ping 'ping'`

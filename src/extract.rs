@@ -1,6 +1,6 @@
-use crate::event::{Event, EventParts};
 use crate::errors::CrabbyError;
-use crate::publish::{Publisher, PreparedPublishPayload, cbor_payload, json_payload};
+use crate::event::{Event, EventParts};
+use crate::publish::{PreparedPublishPayload, Publisher, cbor_payload, json_payload};
 use bytes::Bytes;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;

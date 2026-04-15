@@ -9,14 +9,13 @@ struct AppState {
 
 impl AppState {
     fn new() -> Self {
-        Self { app_name: "crabbyq" }
+        Self {
+            app_name: "crabbyq",
+        }
     }
 }
 
-async fn handle_async_event(
-    event: Event,
-    state: AppState,
-) -> CrabbyResult<()> {
+async fn handle_async_event(event: Event, state: AppState) -> CrabbyResult<()> {
     info!(
         "Stateful handler in '{}' got event: {}",
         state.app_name,

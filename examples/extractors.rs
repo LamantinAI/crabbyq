@@ -29,25 +29,18 @@ impl FromRef<AppState> for AppName {
     }
 }
 
-async fn handle_state(
-    State(app_name): State<AppName>,
-) -> CrabbyResult<()> {
+async fn handle_state(State(app_name): State<AppName>) -> CrabbyResult<()> {
     info!("State extractor resolved app name: {}", app_name.0);
     Ok(())
 }
 
-async fn handle_headers(
-    Headers(headers): Headers,
-) -> CrabbyResult<()> {
+async fn handle_headers(Headers(headers): Headers) -> CrabbyResult<()> {
     let count = headers.as_ref().map_or(0, |headers| headers.len());
     info!("Headers extractor got {} headers", count);
     Ok(())
 }
 
-async fn handle_subject_and_body(
-    Subject(subject): Subject,
-    Body(body): Body,
-) -> CrabbyResult<()> {
+async fn handle_subject_and_body(Subject(subject): Subject, Body(body): Body) -> CrabbyResult<()> {
     info!("Subject extractor got route key: {}", subject);
     info!("Body extractor got {} bytes", body.len());
     Ok(())
@@ -65,24 +58,18 @@ async fn handle_headers_subject_and_body(
     Ok(())
 }
 
-async fn handle_json(
-    Json(payload): Json<JsonPayload>,
-) -> CrabbyResult<()> {
+async fn handle_json(Json(payload): Json<JsonPayload>) -> CrabbyResult<()> {
     info!(
         "Json extractor parsed payload: id={}, label={}",
-        payload.id,
-        payload.label
+        payload.id, payload.label
     );
     Ok(())
 }
 
-async fn handle_cbor(
-    Cbor(payload): Cbor<CborPayload>,
-) -> CrabbyResult<()> {
+async fn handle_cbor(Cbor(payload): Cbor<CborPayload>) -> CrabbyResult<()> {
     info!(
         "Cbor extractor parsed payload: score={}, active={}",
-        payload.score,
-        payload.active
+        payload.score, payload.active
     );
     Ok(())
 }
@@ -98,7 +85,9 @@ async fn main() -> CrabbyResult<()> {
     let nats_broker = NatsBroker::new(nats_client);
 
     // Creating shared application state
-    let app_state = AppState { app_name: "crabbyq" };
+    let app_state = AppState {
+        app_name: "crabbyq",
+    };
 
     // Creating our app with extractor-based handlers
     let app = Router::new()

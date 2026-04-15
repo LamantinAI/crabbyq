@@ -14,6 +14,10 @@ impl NatsBroker {
     pub fn new(client: async_nats::Client) -> Self {
         Self { client: client }
     }
+
+    pub fn client(&self) -> async_nats::Client {
+        self.client.clone()
+    }
 }
 
 #[async_trait]
@@ -23,7 +27,7 @@ impl Broker for NatsBroker {
     async fn subscribe(
         &self,
         subjects: &[String],
-    ) -> Result<Self::MessageStream, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Self::MessageStream, crate::brokers::base::BrokerError> {
         let mut streams = Vec::new();
 
         for subject in subjects {
@@ -40,11 +44,14 @@ impl Broker for NatsBroker {
                     headers
                         .iter()
                         .filter_map(|(key, values)| {
-                            values.first().map(|value| (key.to_string(), value.to_string()))
+                            values
+                                .first()
+                                .map(|value| (key.to_string(), value.to_string()))
                         })
                         .collect()
                 }),
                 reply_to: msg.reply.map(|reply| reply.to_string()),
+                acknowledger: None,
             });
 
             streams.push(stream);
@@ -59,7 +66,7 @@ impl Broker for NatsBroker {
         subject: &str,
         payload: &[u8],
         headers: Option<&HeaderMap>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<(), crate::brokers::base::BrokerError> {
         if let Some(headers) = headers {
             let mut nats_headers = async_nats::HeaderMap::new();
             for (key, value) in headers {
@@ -84,7 +91,7 @@ impl Broker for NatsBroker {
         subject: &str,
         payload: &[u8],
         headers: Option<&HeaderMap>,
-    ) -> Result<BrokerMessage, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<BrokerMessage, crate::brokers::base::BrokerError> {
         let message = if let Some(headers) = headers {
             let mut nats_headers = async_nats::HeaderMap::new();
             for (key, value) in headers {
@@ -109,11 +116,14 @@ impl Broker for NatsBroker {
                 headers
                     .iter()
                     .filter_map(|(key, values)| {
-                        values.first().map(|value| (key.to_string(), value.to_string()))
+                        values
+                            .first()
+                            .map(|value| (key.to_string(), value.to_string()))
                     })
                     .collect()
             }),
             reply_to: message.reply.map(|reply| reply.to_string()),
+            acknowledger: None,
         })
     }
 }
