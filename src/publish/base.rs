@@ -2,6 +2,7 @@ use crate::brokers::Broker;
 use crate::brokers::base::{BrokerMessage, HeaderMap};
 use crate::errors::CrabbyError;
 use bytes::Bytes;
+#[cfg(any(feature = "json", feature = "cbor"))]
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::future::Future;
@@ -224,6 +225,7 @@ impl Reply {
         self.payload
     }
 
+    #[cfg(feature = "json")]
     pub fn into_json<T>(self) -> Result<T, CrabbyError>
     where
         T: DeserializeOwned,
@@ -231,6 +233,7 @@ impl Reply {
         Ok(serde_json::from_slice(&self.payload)?)
     }
 
+    #[cfg(feature = "cbor")]
     pub fn into_cbor<T>(self) -> Result<T, CrabbyError>
     where
         T: DeserializeOwned,
@@ -286,6 +289,7 @@ impl IntoPublishPayload for &str {
     }
 }
 
+#[cfg(feature = "json")]
 pub fn json_payload<T>(value: T) -> Result<PreparedPublishPayload, CrabbyError>
 where
     T: Serialize,
@@ -299,6 +303,7 @@ where
     })
 }
 
+#[cfg(feature = "cbor")]
 pub fn cbor_payload<T>(value: T) -> Result<PreparedPublishPayload, CrabbyError>
 where
     T: Serialize,

@@ -1,8 +1,17 @@
 use crate::errors::CrabbyError;
-use crate::extract::{Body, Cbor, Json};
-use crate::publish::{PreparedPublishPayload, cbor_payload, json_payload};
+use crate::extract::Body;
+use crate::publish::PreparedPublishPayload;
 use bytes::Bytes;
 use std::fmt::Display;
+
+#[cfg(feature = "cbor")]
+use crate::extract::Cbor;
+#[cfg(feature = "json")]
+use crate::extract::Json;
+#[cfg(feature = "cbor")]
+use crate::publish::cbor_payload;
+#[cfg(feature = "json")]
+use crate::publish::json_payload;
 
 pub type HandlerResponse = Option<PreparedPublishPayload>;
 
@@ -45,6 +54,7 @@ impl IntoResponse for Body {
     }
 }
 
+#[cfg(feature = "json")]
 impl<T> IntoResponse for Json<T>
 where
     T: serde::Serialize,
@@ -54,6 +64,7 @@ where
     }
 }
 
+#[cfg(feature = "cbor")]
 impl<T> IntoResponse for Cbor<T>
 where
     T: serde::Serialize,

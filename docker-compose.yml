@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   crabbyq-nats:
     image: nats:latest
@@ -13,6 +11,22 @@ services:
     ]
     volumes:
       - nats-data:/tmp/nats
+    restart: unless-stopped
+
+  crabbyq-redis:
+    image: redis:7-alpine
+    container_name: crabbyq-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  crabbyq-mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: crabbyq-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     restart: unless-stopped
 
 volumes:

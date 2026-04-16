@@ -1,20 +1,42 @@
 [package]
 name = "crabbyq"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
-description = "Framework for routing events inspired by Faststream and axum."
+description = "A declarative async Rust framework for message-driven microservices."
 authors = ["GrumpyChubbyCat lamantin-ai@yandex.ru"]
+license = "MIT"
+homepage = "https://github.com/LamantinAI/crabbyq"
+repository = "https://github.com/LamantinAI/crabbyq"
+documentation = "https://docs.rs/crabbyq"
+readme = "README.md"
+keywords = ["messaging", "microservices", "broker", "nats", "mqtt"]
+categories = ["asynchronous", "network-programming", "embedded"]
+
+[features]
+default = ["json"]
+full = ["json", "cbor", "nats", "redis", "mqtt"]
+json = ["dep:serde_json"]
+cbor = ["dep:ciborium"]
+nats = ["dep:async-nats"]
+redis = ["dep:redis"]
+mqtt = ["dep:rumqttc"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 anyhow = "1.0.99"
-async-nats = "0.46.0"
+async-nats = { version = "0.46.0", optional = true }
 async-trait = "0.1.89"
 bytes = "1.10.1"
-ciborium = "0.2.2"
+ciborium = { version = "0.2.2", optional = true }
 futures-util = "0.3.31"
+redis = { version = "0.32.3", features = ["aio", "tokio-comp"], optional = true }
+rumqttc = { version = "0.25.0", optional = true }
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
-tokio = { version = "1.49.0", features = ["signal", "rt-multi-thread"] }
+serde_json = { version = "1.0.140", optional = true }
+tokio = { version = "1.49.0", features = ["signal", "rt-multi-thread", "macros"] }
 tower = { version = "0.5.3", features = ["util"] }
 tracing = "0.1.44"
 

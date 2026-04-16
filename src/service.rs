@@ -11,15 +11,21 @@ use crate::brokers::Broker;
 use crate::brokers::base::{BrokerError, BrokerMessage, HeaderMap};
 use crate::errors::CrabbyError;
 use crate::event::Event;
-use crate::publish::{Publisher, json_payload};
+use crate::publish::Publisher;
 use crate::response::{HandlerOutcome, error_outcome};
 use futures_util::{Stream, StreamExt};
+#[cfg(feature = "json")]
 use serde::Serialize;
 use std::future::Future;
 use std::pin::Pin;
 use tower::Service;
 use tower::ServiceExt;
 use tower::util::BoxService;
+
+#[cfg(not(feature = "json"))]
+use crate::publish::PreparedPublishPayload;
+#[cfg(feature = "json")]
+use crate::publish::json_payload;
 
 type ShutdownSignal = Pin<Box<dyn Future<Output = ()> + Send>>;
 type ShutdownHookFuture = Pin<Box<dyn Future<Output = Result<(), CrabbyError>> + Send>>;
@@ -39,6 +45,7 @@ pub(crate) struct ServiceRoute {
     pub(crate) service: BoxService<Event, HandlerOutcome, CrabbyError>,
 }
 
+#[cfg(feature = "json")]
 #[derive(Serialize)]
 struct ErrorEvent {
     subject: String,
@@ -307,45 +314,54 @@ where
             error_headers.extend(route_headers);
         }
 
-        match json_payload(ErrorEvent {
+        #[cfg(feature = "json")]
+        let prepared = match json_payload(ErrorEvent {
             subject: subject.to_string(),
             reply_to,
             headers: message_headers,
             payload,
             error: error_message.clone(),
         }) {
-            Ok(mut prepared) => {
-                prepared.headers = match (
-                    prepared.headers,
-                    (!error_headers.is_empty()).then_some(error_headers),
-                ) {
-                    (None, extra) => extra,
-                    (Some(base), None) => Some(base),
-                    (Some(mut base), Some(extra)) => {
-                        base.extend(extra);
-                        Some(base)
-                    }
-                };
-
-                if let Err(e) = broker
-                    .publish(error_topic, &prepared.payload, prepared.headers.as_ref())
-                    .await
-                {
-                    tracing::error!(
-                        "Error publish failure for subject '{}' to topic '{}': {}",
-                        subject,
-                        error_topic,
-                        e
-                    );
-                }
-            }
+            Ok(prepared) => prepared,
             Err(e) => {
                 tracing::error!(
                     "Failed to serialize error event for subject '{}': {}",
                     subject,
                     e
                 );
+                return;
             }
+        };
+
+        #[cfg(not(feature = "json"))]
+        let prepared = PreparedPublishPayload {
+            payload: error_message.into_bytes(),
+            headers: None,
+        };
+
+        let mut prepared = prepared;
+        prepared.headers = match (
+            prepared.headers,
+            (!error_headers.is_empty()).then_some(error_headers),
+        ) {
+            (None, extra) => extra,
+            (Some(base), None) => Some(base),
+            (Some(mut base), Some(extra)) => {
+                base.extend(extra);
+                Some(base)
+            }
+        };
+
+        if let Err(e) = broker
+            .publish(error_topic, &prepared.payload, prepared.headers.as_ref())
+            .await
+        {
+            tracing::error!(
+                "Error publish failure for subject '{}' to topic '{}': {}",
+                subject,
+                error_topic,
+                e
+            );
         }
     }
 

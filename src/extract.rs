@@ -1,11 +1,17 @@
 use crate::errors::CrabbyError;
 use crate::event::{Event, EventParts};
-use crate::publish::{PreparedPublishPayload, Publisher, cbor_payload, json_payload};
+use crate::publish::{PreparedPublishPayload, Publisher};
 use bytes::Bytes;
-use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+
+#[cfg(feature = "cbor")]
+use crate::publish::cbor_payload;
+#[cfg(feature = "json")]
+use crate::publish::json_payload;
+#[cfg(any(feature = "json", feature = "cbor"))]
+use serde::de::DeserializeOwned;
 
 pub type ExtractFuture<T> = Pin<Box<dyn Future<Output = Result<T, CrabbyError>> + Send>>;
 
@@ -75,9 +81,11 @@ pub struct Body(pub Bytes);
 pub struct Publish(pub Publisher);
 
 /// Deserializes the payload as JSON.
+#[cfg(feature = "json")]
 pub struct Json<T>(pub T);
 
 /// Deserializes the payload as CBOR.
+#[cfg(feature = "cbor")]
 pub struct Cbor<T>(pub T);
 
 impl<S, T> FromEventParts<RuntimeState<S>> for State<T>
@@ -130,6 +138,7 @@ where
     }
 }
 
+#[cfg(feature = "json")]
 impl<S, T> FromEvent<S> for Json<T>
 where
     S: Send + Sync + 'static,
@@ -143,6 +152,7 @@ where
     }
 }
 
+#[cfg(feature = "cbor")]
 impl<S, T> FromEvent<S> for Cbor<T>
 where
     S: Send + Sync + 'static,
@@ -165,6 +175,7 @@ impl crate::publish::IntoPublishPayload for Body {
     }
 }
 
+#[cfg(feature = "json")]
 impl<T> crate::publish::IntoPublishPayload for Json<T>
 where
     T: serde::Serialize,
@@ -174,6 +185,7 @@ where
     }
 }
 
+#[cfg(feature = "cbor")]
 impl<T> crate::publish::IntoPublishPayload for Cbor<T>
 where
     T: serde::Serialize,

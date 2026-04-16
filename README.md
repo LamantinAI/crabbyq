@@ -8,21 +8,38 @@ Inspired by the ergonomics of **Axum** and the messaging mindset of **FastStream
 
 CrabbyQ abstracts away broker subscription loops and route dispatching so you can focus on handlers and domain logic. Internally it is built around **Tower**, so routes are modeled as `tower::Service`s and the framework can grow naturally toward layers and middleware.
 
+By default, CrabbyQ keeps the core lightweight and enables only the `json`
+format feature. Broker backends such as NATS, Redis, and MQTT are enabled
+explicitly through Cargo features.
+
 ## Current Features
 
-- `Router::new()` for stateless apps and `set_state(...)` for typed shared state.
-- `route(...)` for a single route key and `routes(...)` for many route keys on one handler.
-- `include(...)` for composing several routers into one service without imposing HTTP-like path nesting.
-- `route_service(...)` for raw `tower::Service` integration.
-- `layer(...)` for applying `tower::Layer` middleware to router routes.
-- Axum-like extractors such as `State<T>`, `Subject`, `Headers`, `Body`, `Json<T>`, and `Cbor<T>`.
-- Framework-managed publishing through `Publish` and `Publisher`.
-- `NatsPublisher` as a NATS-specific publishing layer on top of the core publisher API.
+- A broker-agnostic core `Router` with typed shared state through `set_state(...)`.
+- Route registration through `route(...)`, `routes(...)`, `include(...)`, and `route_service(...)`.
+- `tower` middleware support through `layer(...)`.
+- Axum-like extractors such as `State<T>`, `Subject`, `Headers`, `Body`, and optional payload extractors like `Json<T>` and `Cbor<T>`.
+- Framework-managed publishing through the `Publish` extractor and the core `Publisher`.
+- Broker-specific publishers for NATS, Redis, and MQTT.
 - RPC-style request-reply through handler return values and `Publisher::request(...)`.
-- Always-on error logging with optional router-scoped and service-level error topics.
+- Graceful shutdown hooks and always-on error logging with optional router-scoped and service-level error topics.
 - Multi-argument handler support with the axum-style rule that body-consuming extractors go last.
-- A working NATS broker backend.
-- `NatsRouter` for NATS-specific routing, including JetStream-backed routes through `jetstream(...)`, `js_route(...)`, and `js_durable_route(...)`.
+- Working broker backends for NATS, Redis pub/sub, and MQTT.
+- `NatsRouter` and `NatsPublisher` for NATS-specific features, including JetStream routes and JetStream publishing.
+
+## Features
+
+- `json`
+  Enabled by default. Adds `Json<T>` extractor/response support.
+- `cbor`
+  Enables `Cbor<T>` extractor/response support.
+- `nats`
+  Enables `NatsBroker`, `NatsRouter`, `NatsPublisher`, and JetStream integration.
+- `redis`
+  Enables `RedisBroker` and `RedisPublisher`.
+- `mqtt`
+  Enables `MqttBroker` and `MqttPublisher`.
+- `full`
+  Convenience feature for local development and IDE indexing. Enables `json`, `cbor`, `nats`, `redis`, and `mqtt`.
 
 ## Quick Start
 
@@ -56,6 +73,12 @@ async fn main() -> CrabbyResult<()> {
     app.serve().await?;
     Ok(())
 }
+```
+
+For the NATS examples above, enable the `nats` feature:
+
+```toml
+crabbyq = { version = "0.1.0", features = ["nats"] }
 ```
 
 ### State and Extractors
@@ -137,31 +160,33 @@ See [`examples/README.md`](examples/README.md) for the full list of runnable exa
   - `FromEvent<S>` for full-event or payload-consuming values.
 - Publishers are injected by the framework at `into_service(...)` time, so
   handlers can publish without manually wiring broker clients through state.
-- `Publisher` stays broker-agnostic and is the capability injected into
-  handlers. Broker-specific publishing features live in broker-specific
-  publishers such as `NatsPublisher`.
+- `Publisher` stays broker-agnostic and is the injected handler capability.
+  Broker-specific publishing features live in broker-specific publishers such
+  as `NatsPublisher`, `RedisPublisher`, and `MqttPublisher`.
 - RPC replies are sent automatically when the incoming message carries `reply_to`
   metadata and the handler returns a response value.
 - Middleware is exposed through `Router::layer(...)` and currently composes
   routes through boxed `tower::Service`s for implementation simplicity.
   A more zero-cost internal pipeline is planned as the framework matures.
-- Broker-specific features live in broker-specific routers. For example,
-  `NatsRouter` extends the core `Router` with JetStream route bindings while
-  still allowing plain NATS routes in the same service.
+- Broker-specific features live in broker-specific routers and publishers. For
+  example, `NatsRouter` and `NatsPublisher` extend the core API with
+  JetStream-specific routing and publishing.
+- Broker backends and message formats are feature-gated so embedded and other
+  constrained targets can keep the dependency footprint smaller.
 - CrabbyQ focuses on routing and service ergonomics. For NATS JetStream
   storage APIs such as Key-Value and Object Store, `async-nats` already
   provides a solid API, so CrabbyQ does not add extra wrapper layers there.
 
 ## Roadmap
 
-The project is in its early stages (v0.1.0). Future development focuses on:
+Future development focuses on:
 
 - A more zero-cost internal middleware pipeline on top of the current
   `tower::Layer` integration.
 - Broker-specific extractors for transport metadata such as NATS and JetStream
   delivery context.
 - Better typed rejection and error response handling.
-- More broker backends such as RabbitMQ, Kafka, and Redis.
+- More broker backends such as RabbitMQ and Kafka.
 - Additional payload formats such as Protobuf and MsgPack.
 
 ## Contributing
