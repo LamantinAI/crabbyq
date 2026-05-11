@@ -73,6 +73,18 @@ cargo run --features <feature-list> --example <name>
   Run with:
   `cargo run --features mqtt --example basic_mqtt`
 
+- `redis_streams`: mixes Redis pub/sub, ephemeral `XREAD` routes,
+  consumer-group `XREADGROUP` routes with automatic `XACK`, and a
+  `PSUBSCRIBE` pattern route through `RedisRouter`.
+  Run with:
+  `cargo run --features redis,json --example redis_streams`
+
+- `mqtt_qos`: per-route `QoS::ExactlyOnce`, `$share/<group>/<topic>` shared
+  subscriptions, and retained-message publishing through `MqttRouter` and
+  `MqttPublisher::mqtt_publish(...)`.
+  Run with:
+  `cargo run --features mqtt --example mqtt_qos`
+
 - `jetstream`: mixes plain NATS routes with JetStream-backed routes through `NatsRouter`.
   Run with:
   `cargo run --features nats,json --example jetstream`

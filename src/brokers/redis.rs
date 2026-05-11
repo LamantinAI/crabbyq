@@ -12,6 +12,10 @@ impl RedisBroker {
     pub fn new(client: redis::Client) -> Self {
         Self { client }
     }
+
+    pub fn client(&self) -> redis::Client {
+        self.client.clone()
+    }
 }
 
 #[async_trait]

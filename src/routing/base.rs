@@ -287,7 +287,6 @@ impl<S: Clone + Send + Sync + 'static> Router<S> {
         self
     }
 
-    #[cfg(feature = "nats")]
     pub(crate) fn route_with_stream_factory<H, T, F>(
         mut self,
         subject: &str,

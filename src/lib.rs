@@ -18,15 +18,21 @@ pub use extract::Json;
 /// Common extractors and the main router API for most applications.
 pub use extract::{Body, FromRef, Headers, Publish, State, Subject};
 #[cfg(feature = "mqtt")]
-pub use publish::MqttPublisher;
+pub use publish::{MqttPublishRequest, MqttPublisher};
 #[cfg(feature = "redis")]
-pub use publish::RedisPublisher;
+pub use publish::{RedisPublisher, RedisXAddRequest};
 #[cfg(feature = "nats")]
 pub use publish::{NatsJsPublishRequest, NatsPublishAck, NatsPublisher};
 pub use publish::{Publisher, Reply};
 pub use response::{HandlerResponse, IntoResponse};
+#[cfg(feature = "mqtt")]
+pub use routing::MqttRouter;
 #[cfg(feature = "nats")]
 pub use routing::NatsRouter;
+#[cfg(feature = "redis")]
+pub use routing::{
+    AutoClaimConfig, RedisGroupRouteConfig, RedisRouter, RedisStreamRouteConfig,
+};
 pub use routing::Router;
 
 pub mod prelude {
@@ -40,9 +46,12 @@ pub mod prelude {
     #[cfg(feature = "json")]
     pub use crate::Json;
     #[cfg(feature = "mqtt")]
-    pub use crate::MqttPublisher;
+    pub use crate::{MqttPublishRequest, MqttPublisher, MqttRouter};
     #[cfg(feature = "redis")]
-    pub use crate::RedisPublisher;
+    pub use crate::{
+        AutoClaimConfig, RedisGroupRouteConfig, RedisPublisher, RedisRouter,
+        RedisStreamRouteConfig, RedisXAddRequest,
+    };
     #[cfg(feature = "nats")]
     pub use crate::{NatsJsPublishRequest, NatsPublishAck, NatsPublisher, NatsRouter};
 }

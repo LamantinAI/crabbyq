@@ -17,8 +17,8 @@ pub use base::{
     merge_headers,
 };
 #[cfg(feature = "mqtt")]
-pub use mqtt::MqttPublisher;
+pub use mqtt::{MqttPublishRequest, MqttPublisher};
 #[cfg(feature = "nats")]
 pub use nats::{NatsJsPublishRequest, NatsPublishAck, NatsPublisher};
 #[cfg(feature = "redis")]
-pub use redis::RedisPublisher;
+pub use redis::{RedisPublisher, RedisXAddRequest};
